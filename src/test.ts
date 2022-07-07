@@ -1,6 +1,8 @@
 import getPDFs from './getPDFs';
 
+
 (async () => {
   // npx ts-node src/test.ts
-  console.log(await getPDFs());
+  await getPDFs();
+  console.log('完了');
 })();

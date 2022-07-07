@@ -1,7 +1,6 @@
 import { launch } from 'puppeteer';
 
 const getPDFs = async (): Promise<string> => {
-  
   const browser = await launch({
     headless: true,
     //slowMo: 50,
@@ -12,7 +11,8 @@ const getPDFs = async (): Promise<string> => {
     args: [
       '--no-sandbox',
       '--disable-features=site-per-process'
-    ]
+    ],
+    channel: 'chrome'
   });
   const page = (await browser.pages())[0];
   await page.setUserAgent('bot');
