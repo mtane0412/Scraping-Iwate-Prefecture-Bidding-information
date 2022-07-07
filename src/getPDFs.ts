@@ -1,5 +1,5 @@
 import { launch } from 'puppeteer';
-
+import * as path from 'path';
 const getPDFs = async (): Promise<string> => {
   const browser = await launch({
     headless: true,
@@ -99,13 +99,15 @@ const getPDFs = async (): Promise<string> => {
     frame2.click('a[href^="javascript:doEdit(')
   ]);
 
+  const downloadPath = `${path.dirname(process.execPath)}/data/${folderName}/`
+
   await cdpSession.send("Browser.setDownloadBehavior", {
     behavior: "allow",
-    downloadPath: `./data/${folderName}/`,
+    downloadPath,
     eventsEnabled: true,
   });
 
-  console.log('フォルダ作成: ' + folderName);
+  console.log('フォルダ作成: ' + downloadPath);
 
 
   await frame.evaluate(async (btnSelector) => {
