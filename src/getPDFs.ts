@@ -1,6 +1,11 @@
 import { launch } from 'puppeteer';
 import * as path from 'path';
 const getPDFs = async (): Promise<string> => {
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error(reason);
+    process.exit(1);
+  });
+  
   const browser = await launch({
     headless: true,
     //slowMo: 50,
@@ -39,6 +44,31 @@ const getPDFs = async (): Promise<string> => {
       }
     );
   });
+
+  await cdpSession.send('Fetch.enable', { // Fetchを有効に
+    patterns: [{ urlPattern: '*', requestStage: 'Response' }] // ResponseステージをFetch
+  });
+
+  await cdpSession.on('Fetch.requestPaused', async (requestEvent) => { // ここで要求を一時停止
+    const { requestId } = requestEvent;
+    let responseHeaders = requestEvent.responseHeaders || [];
+    let contentType = responseHeaders.filter(
+        header => header.name.toLowerCase() === 'content-type')[0].value;
+
+    // pdfとxml以外はそのまま
+    if (!contentType.endsWith('pdf') && !contentType.endsWith('xml')) {
+        await cdpSession.send('Fetch.continueRequest', { requestId }); // リクエストを続行
+        return;
+    }
+
+    // pdfとxmlの場合は`content-disposition: attachment`をつける
+    responseHeaders.push({ name: 'content-disposition', value: 'attachment' });
+    const response = await cdpSession.send('Fetch.getResponseBody', { requestId }); // bodyを取得
+    await cdpSession.send('Fetch.fulfillRequest', // レスポンスを指定
+        { requestId, responseCode: 200, responseHeaders, body: response.body });
+});
+
+
   
   page.on('dialog', async dialog => {
     /* 無指定検索時の確認をOKにする */
@@ -99,8 +129,7 @@ const getPDFs = async (): Promise<string> => {
     frame2.click('a[href^="javascript:doEdit(')
   ]);
 
-  const downloadPath = `${path.dirname(process.execPath)}/data/${folderName}/`
-
+  const downloadPath = process.pkg ? `${path.dirname(process.execPath)}/data/${folderName}/` : `${process.cwd()}/data/${folderName}/`;
   await cdpSession.send("Browser.setDownloadBehavior", {
     behavior: "allow",
     downloadPath,
@@ -132,7 +161,7 @@ const getPDFs = async (): Promise<string> => {
       }, 6000);
     }),
   ]);
-  
+
   await browser.close();
 
   return;
