@@ -49,7 +49,7 @@ const getPDFs = async (): Promise<string> => {
     patterns: [{ urlPattern: '*', requestStage: 'Response' }] // ResponseステージをFetch
   });
 
-  await cdpSession.on('Fetch.requestPaused', async (requestEvent) => { // ここで要求を一時停止
+  cdpSession.on('Fetch.requestPaused', async (requestEvent) => { // ここで要求を一時停止
     const { requestId } = requestEvent;
     let responseHeaders = requestEvent.responseHeaders || [];
     let contentType = responseHeaders.filter(
@@ -66,7 +66,7 @@ const getPDFs = async (): Promise<string> => {
     const response = await cdpSession.send('Fetch.getResponseBody', { requestId }); // bodyを取得
     await cdpSession.send('Fetch.fulfillRequest', // レスポンスを指定
         { requestId, responseCode: 200, responseHeaders, body: response.body });
-});
+  });
 
 
   
@@ -129,7 +129,7 @@ const getPDFs = async (): Promise<string> => {
     frame2.click('a[href^="javascript:doEdit(')
   ]);
 
-  const downloadPath = process.pkg ? `${path.dirname(process.execPath)}/data/${folderName}/` : `${process.cwd()}/data/${folderName}/`;
+  const downloadPath = path.join(process.pkg ? `${path.dirname(process.execPath)}/data/${folderName}/` : `${process.cwd()}/data/${folderName}/`);
   await cdpSession.send("Browser.setDownloadBehavior", {
     behavior: "allow",
     downloadPath,
