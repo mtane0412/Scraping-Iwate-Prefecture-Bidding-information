@@ -2,8 +2,8 @@
   "name": "gcf-puppeteer",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/test.js",
-  "bin": "dist/test.js",
+  "main": "dist/getPDFs.js",
+  "bin": "dist/getPDFs.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -11,6 +11,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "log4js": "^6.6.1",
+    "pdf-parse": "^1.1.1",
     "pkg": "^5.7.0",
     "puppeteer": "^14.4.1",
     "typescript": "^4.7.4"

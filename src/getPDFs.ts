@@ -1,8 +1,32 @@
 import { launch } from 'puppeteer';
 import * as path from 'path';
+import * as log4js from "log4js";
+
+
+const logPath = path.join(process.pkg ? `${path.dirname(process.execPath)}/logs/` : `${process.cwd()}/logs/`);
+
+log4js.configure({
+  appenders : {
+    stdout: { type: 'stdout' },
+    system : {type : 'dateFile', filename : logPath + 'system/system', pattern: '-yyyy-MM-dd.log', alwaysIncludePattern: "true"},
+    error : {type : 'file', filename : logPath + 'debug/error.log'},
+    debug : {type : 'file', filename : logPath + 'debug/debug.log'}
+  },
+  categories : {
+    default : {appenders : ['system', 'stdout'], level : 'info'},
+    error : {appenders : ['error', 'stdout'], level: 'warn'},
+    debug : {appenders : ['debug', 'stdout'], level : 'debug'}
+  }
+});
+
+const systemLogger = log4js.getLogger('system');
+const errorLogger = log4js.getLogger('error');
+const debugLogger = log4js.getLogger('debug');
+
+
 const getPDFs = async (): Promise<string> => {
   process.on('unhandledRejection', (reason, promise) => {
-    console.error(reason);
+    errorLogger.error(reason);
     process.exit(1);
   });
   
@@ -26,7 +50,7 @@ const getPDFs = async (): Promise<string> => {
 
   const res = await page.goto('https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=0620060006600600', {waitUntil: "domcontentloaded"});
   if (!res.ok()) {
-    console.log('response not ok');
+    errorLogger.error('入札情報公開サービスに接続できませんでした');
     return
   }
 
@@ -104,17 +128,20 @@ const getPDFs = async (): Promise<string> => {
     frame.click('[onclick="jskfcLink(4);"]')
   ]);
 
-  // 入札情報の閲覧 > 表示件数を1ページ100件に
+  // 発注情報検索: 表示件数を1ページ100件に
   await frame.select('select[name="A300"]', '040');
 
-  // 発注情報検索 > 検索ボタンをクリック
+  // 発注情報検索: 業務名に「設計」を入力
+  await frame.type('[name="koujimei"]', "設計");
+
+  // 発注情報検索: 検索ボタンをクリック
   await Promise.all([
     frame.waitForNavigation(),
     frame.click('[onclick="doSearch1();"]')
   ]);
 
 
-  // 発注情報検索 > 業務をクリック
+  // 発注情報検索: 業務をクリック
   let elementHandle = await frame.$('#frmMain');
   const frame2 = await elementHandle.contentFrame();
 
@@ -136,22 +163,42 @@ const getPDFs = async (): Promise<string> => {
     eventsEnabled: true,
   });
 
-  console.log('フォルダ作成: ' + downloadPath);
+  systemLogger.info('フォルダ作成: ' + downloadPath);
 
+  type DownloadResult = {
+    downloaded: Array<string>;
+    notDownloaded: Array<string>;
+  }
 
-  await frame.evaluate(async (btnSelector) => {
+  
+  const downloadResult:DownloadResult = await frame.evaluate(async (btnSelector) => {
     // this executes in the page
-    const links = document.querySelectorAll(btnSelector);
-    for (let i=0; i<links.length; i++) {
-      const fileName:string = links[i].textContent.replace(/\s/g, '');
-      if (fileName === '') continue; // 空のフィールドはスキップ
 
-      links[i].click(); 
-      const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-      await sleep(1000);
-      console.log(`download: ${fileName}`);
+    const downloaded:Array<string> = [];
+    const notDownloaded:Array<string> = [];
+
+    const links = document.querySelectorAll(btnSelector);
+    const keywords:Array<string> = ['入札公告', '位置図', '図面', '参考資料'];
+    for (let i=0; i<links.length; i++) {
+      const fileName:string = await links[i].textContent.replace(/\s/g, '');
+      const isDownloadTarget:Boolean = typeof keywords.find(keyword => fileName.match(keyword)) !== 'undefined';
+      if(isDownloadTarget) {
+        // ダウンロード対象のPDFだけをダウンロード
+        links[i].click(); 
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+        await sleep(1000);
+        downloaded.push(fileName);
+      } else {
+        // ダウンロード対象以外はスキップ
+        if(fileName !== '') notDownloaded.push(fileName);
+        continue;
+      }
     }
+    return {downloaded, notDownloaded}
   }, 'a[href^="javascript:download"]');
+
+  
+  systemLogger.info(downloadResult);
 
   await Promise.race([
     downloaded,
@@ -167,4 +214,13 @@ const getPDFs = async (): Promise<string> => {
   return;
 };
 
-export default getPDFs;
+(async () => {
+  // npx ts-node src/test.ts
+  await getPDFs().then(() => {
+    // systemLogger.info("ダウンロード完了");
+    // It is optional - if comment out is, node.js get same result
+    process.exit(0); 
+}).catch(error => {
+    errorLogger.error(error);
+});
+})();
