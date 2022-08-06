@@ -1,14 +1,63 @@
-import { launch } from 'puppeteer';
+import { Browser, launch } from 'puppeteer';
 import * as path from 'path';
-import * as log4js from "log4js";
+import * as log4js from 'log4js';
+import * as fs from 'fs';
+import * as toml from 'toml';
+
+const config = toml.parse(fs.readFileSync('./config.toml', 'utf8'));
 
 
-const logPath = path.join(process.pkg ? `${path.dirname(process.execPath)}/logs/` : `${process.cwd()}/logs/`);
+/*
+  config
+*/
+const topPage:string = config.topPage; // 岩手県入札情報公開トップページ
+const pdfKeywords:string[] = config.pdfKeywords; // このキーワードを含むPDFをダウンロードする
+const projectTitle:string = config.projectTitle; // この業務名を含むものに絞る
+
+// exeとnodeで実行パスを変える
+const executionPath = path.join(process.pkg ? path.dirname(process.execPath) : process.cwd());
+
+// sleep関数
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// PDFダウンロードチェック関数
+const downloadCheck = (downloadHistory: DownloadEvent[]) => {
+  // ダウンロード履歴を参照して存在していないファイルがあるプロジェクトのリストを返す
+  const failedDownloads:string[] = [];
+  downloadHistory.forEach(contract=> {
+    const folderName:string = contract.contractId + '_' + contract.contractName;
+    const downloadPath:string = `${executionPath}/data/${folderName}/`;
+    for (let i=0;i<contract.downloaded.length; i++) {
+      const fileName = contract.downloaded[i];
+      const pdfPath = downloadPath + fileName;
+      const pdfExists:boolean = fs.existsSync(pdfPath);
+      if (!pdfExists) {
+        console.log('not exist:' + pdfPath);
+        failedDownloads.push(fileName);
+      }
+    }
+  })
+  //console.table(failedDownloads);
+  if (failedDownloads.length === 0) {
+    console.log('ダウンロードが正常に終了しました。')
+  } else {
+    console.log('以下のファイルがダウンロードに失敗した可能性があります。')
+    console.table(failedDownloads);
+  };
+  return failedDownloads
+}
+
+/*
+  log出力用
+*/
+
+const logPath = `${executionPath}/logs/`;
+
 
 log4js.configure({
   appenders : {
     stdout: { type: 'stdout' },
-    system : {type : 'dateFile', filename : logPath + 'system/system', pattern: '-yyyy-MM-dd.log', alwaysIncludePattern: "true"},
+    system : {type : 'dateFile', filename : logPath + 'system/system', pattern: 'yyyy-MM-dd.log', alwaysIncludePattern: "true"},
     error : {type : 'file', filename : logPath + 'debug/error.log'},
     debug : {type : 'file', filename : logPath + 'debug/debug.log'}
   },
@@ -23,32 +72,40 @@ const systemLogger = log4js.getLogger('system');
 const errorLogger = log4js.getLogger('error');
 const debugLogger = log4js.getLogger('debug');
 
+/*
+  ダウンロード履歴用
+*/
 
-const getPDFs = async (): Promise<string> => {
+type DownloadEvent = {
+  contractId: string;
+  contractName: string;
+  downloaded: string[];
+  notDownloaded: string[];
+};
+
+let downloadHistory:DownloadEvent[] = [];
+
+try {
+   downloadHistory = JSON.parse(fs.readFileSync(logPath + 'downloadHistory.json', 'utf8'));
+} catch(err) {
+  if (err.code === 'ENOENT') {
+    console.log('downloadHistory.jsonを作成');
+  } else {
+    errorLogger.error(err);
+  }
+}
+
+const getPDFs = async (browser:Browser): Promise<string> => {
   process.on('unhandledRejection', (reason, promise) => {
     errorLogger.error(reason);
-    process.exit(1);
   });
   
-  const browser = await launch({
-    headless: true,
-    //slowMo: 50,
-    defaultViewport: {
-      width: 1280,
-      height: 882
-    },
-    args: [
-      '--no-sandbox',
-      '--disable-features=site-per-process'
-    ],
-    channel: 'chrome'
-  });
   const page = (await browser.pages())[0];
   await page.setUserAgent('bot');
   // console.logデバッグしたいときに
   page.on('console', msg => console.log(msg.text()));
 
-  const res = await page.goto('https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=0620060006600600', {waitUntil: "domcontentloaded"});
+  const res = await page.goto(topPage, {waitUntil: "domcontentloaded"});
   if (!res.ok()) {
     errorLogger.error('入札情報公開サービスに接続できませんでした');
     return
@@ -56,18 +113,46 @@ const getPDFs = async (): Promise<string> => {
 
   const cdpSession = await page.target().createCDPSession();
 
-  const downloaded = new Promise<void>((resolve, reject) => {
+
+  let fileName:string = '';
+  const downloadsInProgress:Set<string> = new Set();
+
+  cdpSession.on('Browser.downloadWillBegin', ({ guid, suggestedFilename }) => {
+    fileName = suggestedFilename;
+    // console.log('download beginning,', fileName);
+    downloadsInProgress.add(guid);
+  });
+
+  cdpSession.on('Browser.downloadProgress', ({ guid, state }) => {
+    if (state === 'inProgress') {
+      //console.log('download inProgress: ', guid);
+      clearTimeout(downloadCompletionTimer) // inProgress中はダウンロード完了タイマーを消す
+    }
+    if (state === 'completed') {
+      console.log('download completed: ', fileName);
+      downloadsInProgress.delete(guid);
+    }
+  });
+
+  let downloadCompletionTimer:NodeJS.Timeout;
+  const downloadProgress = new Promise<void>((resolve, reject) => {
     cdpSession.on(
       "Browser.downloadProgress",
       (params: { state: "inProgress" | "completed" | "canceled" }) => {
-        if (params.state == "completed") {
-          resolve();
-        } else if (params.state == "canceled") {
+        if (downloadsInProgress.size === 0) {
+          downloadCompletionTimer = setTimeout(() => {
+            clearTimeout(downloadFailedTimer); // ダウンロードタイムアウトタイマーを消す
+            resolve();
+          }, 10000);
+        }
+        if (params.state == "canceled") {
           reject("download cancelled");
         }
       }
     );
   });
+
+  
 
   await cdpSession.send('Fetch.enable', { // Fetchを有効に
     patterns: [{ urlPattern: '*', requestStage: 'Response' }] // ResponseステージをFetch
@@ -131,8 +216,8 @@ const getPDFs = async (): Promise<string> => {
   // 発注情報検索: 表示件数を1ページ100件に
   await frame.select('select[name="A300"]', '040');
 
-  // 発注情報検索: 業務名に「設計」を入力
-  await frame.type('[name="koujimei"]', "設計");
+  // 発注情報検索: 業務名を入力して絞る
+  await frame.type('[name="koujimei"]', projectTitle);
 
   // 発注情報検索: 検索ボタンをクリック
   await Promise.all([
@@ -141,86 +226,201 @@ const getPDFs = async (): Promise<string> => {
   ]);
 
 
-  // 発注情報検索: 業務をクリック
+  // 発注情報検索: 業務情報を取得
   let elementHandle = await frame.$('#frmMain');
-  const frame2 = await elementHandle.contentFrame();
+  let frame2 = await elementHandle.contentFrame();
 
-  const folderName:string = await frame2.evaluate(() => {
-    const contactId:string = document.querySelector('.left.listCol3').textContent;
-    const contactName:string = document.querySelector('.left.listCol2 a').textContent;
-    return (contactId + '_' + contactName).replace(/\s/g, '')
-  });
-
-  await Promise.all([
-    frame.waitForNavigation(),
-    frame2.click('a[href^="javascript:doEdit(')
-  ]);
-
-  const downloadPath = path.join(process.pkg ? `${path.dirname(process.execPath)}/data/${folderName}/` : `${process.cwd()}/data/${folderName}/`);
-  await cdpSession.send("Browser.setDownloadBehavior", {
-    behavior: "allow",
-    downloadPath,
-    eventsEnabled: true,
-  });
-
-  systemLogger.info('フォルダ作成: ' + downloadPath);
-
-  type DownloadResult = {
-    downloaded: Array<string>;
-    notDownloaded: Array<string>;
+  type Contract = {
+    contractId: string;
+    contractName: string;
+    linkArg: string;
+    releaseDate: string;
   }
 
-  
-  const downloadResult:DownloadResult = await frame.evaluate(async (btnSelector) => {
-    // this executes in the page
-
-    const downloaded:Array<string> = [];
-    const notDownloaded:Array<string> = [];
-
-    const links = document.querySelectorAll(btnSelector);
-    const keywords:Array<string> = ['入札公告', '位置図', '図面', '参考資料'];
-    for (let i=0; i<links.length; i++) {
-      const fileName:string = await links[i].textContent.replace(/\s/g, '');
-      const isDownloadTarget:Boolean = typeof keywords.find(keyword => fileName.match(keyword)) !== 'undefined';
-      if(isDownloadTarget) {
-        // ダウンロード対象のPDFだけをダウンロード
-        links[i].click(); 
-        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-        await sleep(1000);
-        downloaded.push(fileName);
-      } else {
-        // ダウンロード対象以外はスキップ
-        if(fileName !== '') notDownloaded.push(fileName);
-        continue;
+  let downloadContracts:Contract[] = await frame2.evaluate(() => {
+    const trs = document.querySelectorAll('tr');
+    const contracts:Contract[] = [];
+    for (let i=0; i < trs.length; i++) {
+      const tr = trs[i];
+      if(tr.children[0].firstElementChild && tr.children[0].firstElementChild.tagName === 'IMG') {
+        // 公開日に画像(New)があるとき
+        const releaseDate:string = tr.children[0].textContent.replace(/\s/g, '');
+        const contractName:string = tr.children[1].textContent.replace(/\s/g, '');
+        const contractId:string = tr.children[2].textContent.replace(/\s/g, '');
+        const linkArg:string = tr.children[1].firstElementChild.getAttribute('href');
+        const contract:Contract = {
+          contractId,
+          contractName,
+          linkArg,
+          releaseDate
+        }
+        contracts.push(contract);
       }
     }
-    return {downloaded, notDownloaded}
-  }, 'a[href^="javascript:download"]');
+    return contracts
+  });
 
-  
-  systemLogger.info(downloadResult);
+  const downloadedIdList = downloadHistory.map(contract => contract.contractId);
 
+  // ダウンロードプロジェクトリストからダウンロード済みのプロジェクトを除外
+  downloadContracts = downloadContracts.filter(contract => !downloadedIdList.includes(contract.contractId));
+  //console.log(downloadContracts);
+
+
+  if (!downloadContracts.length) {
+    // ダウンロードするものがない場合は終了
+    systemLogger.info('新規ダウンロードなし');
+    return; 
+  }
+
+  for (let i=0; i<downloadContracts.length; i++) {
+    // 業務名クリック → 発注情報閲覧へ移動
+    console.log('project: ' + downloadContracts[i].contractName);
+    elementHandle = await frame.$('#frmMain');
+    frame2 = await elementHandle.contentFrame();
+    await Promise.all([
+      frame.waitForNavigation(),
+      frame2.click(`a[href="${downloadContracts[i].linkArg}"]`)
+    ]);
+
+    const contractId = downloadContracts[i].contractId;
+    const contractName = downloadContracts[i].contractName;
+    const folderName:string = contractId + '_' + contractName;
+    
+    // ダウンロード先の設定
+    const downloadPath = `${executionPath}/data/${folderName}/`;
+    await cdpSession.send("Browser.setDownloadBehavior", {
+      behavior: "allow",
+      downloadPath,
+      eventsEnabled: true,
+    });
+
+    type downloadPdf = {
+      fileName: string;
+      href: string;
+      enableDownload: boolean;
+    }
+
+    const downloadPdfs:downloadPdf[] = await frame.evaluate(async (btnSelector:string, pdfKeywords:string[]) => {
+      // this executes in the page
+
+      const links:NodeListOf<Element> = document.querySelectorAll(btnSelector);
+      //const downloaded:string[] = [];
+      //const notDownloaded:string[] = [];
+      
+
+      const downloadPdfs:downloadPdf[] = Array.from(links)
+        .filter(link => link.textContent.replace(/\s/g, '') !== '') // 空行除太郎
+        .map(link => {
+          const fileName:string = link.textContent
+            .replace(/[\r\n|\n|\r]/g, '') // 改行を削除
+            .replace(/^\s*?(\S.*\S)\s.*?$/, '$1')  // ファイル名前後の空白を削除
+            .replace(/(?<=\S) (?=\S)/, '+');  // ファイル名内部の 半角スペース を + に変更
+          const href:string = link.getAttribute('href');
+          const enableDownload:boolean = (typeof pdfKeywords.find(keyword => fileName.match(keyword)) !== 'undefined');
+          const downloadPdf:downloadPdf = {
+            fileName,
+            href,
+            enableDownload
+          }
+          return downloadPdf
+        });
+
+      return downloadPdfs;
+    }, 'a[href^="javascript:download"]', pdfKeywords);
+
+    //console.log('downloadPdfs');
+    //console.log(downloadPdfs);
+
+    let downloaded:string[] = [];
+    let notDownloaded:string[] = [];
+    for (let i=0; i<downloadPdfs.length; i++) {
+      const downloadPdf = downloadPdfs[i];
+      if (downloadPdf.enableDownload){
+        // キーワードが含まれるPDFはダウンロードする
+        const selector:string = `a[href="${downloadPdf.href}"]`;
+        await Promise.all([
+          frame.waitForSelector(selector),
+          frame.click(selector),
+          downloaded.push(downloadPdf.fileName), // ダウンロード履歴にダウンロード対象として追加
+          sleep(1000)
+        ]);
+      } else {
+        // キーワードが含まれないPDFはダウンロードしない
+        notDownloaded.push(downloadPdf.fileName) // ダウンロード履歴にダウンロード対象外として追加
+      }
+    }
+
+    // ダウンロード履歴に追加
+    downloadHistory.push({
+      contractId,
+      contractName,
+      downloaded,
+      notDownloaded
+    });
+
+    // 戻るをクリック → 発注情報検索画面に戻る
+    await Promise.all([
+      frame.waitForNavigation(),
+      frame.click('input[value="戻る"]')
+    ]);
+  }
+
+  fs.writeFileSync(logPath + 'downloadHistory.json', JSON.stringify(downloadHistory, null, 2));
+
+  // ロギング
+  downloadHistory.forEach(project => {
+    project.downloaded.forEach(pdf=> systemLogger.info(`DL済: [${project.contractId}] ${project.contractName} ${pdf}`));
+    project.notDownloaded.forEach(pdf=> systemLogger.info(`未DL: [${project.contractId}] ${project.contractName} ${pdf}`));
+  })
+  /*
+  for (let i=0; i<downloadHistory.length; i++) {
+    const project = downloadHistory[i];
+
+    systemLogger.info(`[${project.contractId}] ${project.contractName}`);
+    systemLogger.info(`ダウンロード済: ${project.downloaded.join(', ')}`);
+    systemLogger.info(`未ダウンロード: ${project.notDownloaded.join(', ')}`);
+  }
+  */
+
+  let downloadFailedTimer:NodeJS.Timeout;
   await Promise.race([
-    downloaded,
+    downloadProgress,
     new Promise<boolean>((_resolve, reject) => {
-      setTimeout(() => {
+      downloadFailedTimer = setTimeout(() => {
         reject("download timed out");
-      }, 6000);
+      }, 30000);
     }),
   ]);
-
-  await browser.close();
-
-  return;
 };
 
+
+
 (async () => {
-  // npx ts-node src/test.ts
-  await getPDFs().then(() => {
-    // systemLogger.info("ダウンロード完了");
-    // It is optional - if comment out is, node.js get same result
-    process.exit(0); 
-}).catch(error => {
+  const browser = await launch({
+    headless: true,
+    //slowMo: 50,
+    defaultViewport: {
+      width: 1280,
+      height: 882
+    },
+    args: [
+      '--no-sandbox',
+      '--disable-features=site-per-process'
+    ],
+    channel: 'chrome'
+  });
+
+  try {
+    await getPDFs(browser);
+    downloadCheck(downloadHistory);
+  } catch(error) {
     errorLogger.error(error);
-});
+    log4js.shutdown((err)=> {
+      if (err) throw err;
+      process.exit(1);
+    });
+  } finally {
+    await browser.close();
+  };
 })();
