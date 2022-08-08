@@ -415,20 +415,43 @@ const getPDFs = async (browser:Browser): Promise<string> => {
 
 
 (async () => {
-  const browser = await launch({
-    headless: true,
-    //slowMo: 50,
-    defaultViewport: {
-      width: 1280,
-      height: 882
-    },
-    args: [
-      '--no-sandbox',
-      '--disable-features=site-per-process'
-    ],
-    channel: 'chrome'
-  });
-
+  // ブラウザ立ち上げ
+  let browser:Browser;
+  try {
+    if (fs.existsSync('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe')) {
+      browser = await launch({
+        headless: true,
+        //slowMo: 50,
+        executablePath: 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        defaultViewport: {
+          width: 1280,
+          height: 882
+        },
+        args: [
+          '--no-sandbox',
+          '--disable-features=site-per-process'
+        ],
+        channel: 'chrome'
+      });
+    } else {
+      browser = await launch({
+        headless: true,
+        //slowMo: 50,
+        defaultViewport: {
+          width: 1280,
+          height: 882
+        },
+        args: [
+          '--no-sandbox',
+          '--disable-features=site-per-process'
+        ],
+        channel: 'chrome'
+      });
+    }
+  } catch (error) {
+    errorLogger.error(error);
+  }
+  // ダウンロード実行
   try {
     await getPDFs(browser);
     downloadCheck(downloadHistory);
