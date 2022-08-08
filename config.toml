@@ -1,0 +1,13 @@
+# 岩手県入札情報公開サービストップページ
+topPage = "https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=0620060006600600"
+
+# このキーワードを含むPDFをダウンロードする
+pdfKeywords = [
+  "公告",
+  "位置図",
+  "図面",
+  "参考資料"
+]
+
+# この業務名を含むものに絞る
+projectTitle = "設計"

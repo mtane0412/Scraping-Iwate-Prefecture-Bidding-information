@@ -4,18 +4,38 @@ import * as log4js from 'log4js';
 import * as fs from 'fs';
 import * as toml from 'toml';
 
-const config = toml.parse(fs.readFileSync('./config.toml', 'utf8'));
-
+// exeとnodeで実行パスを変える
+const executionPath = path.join(process.pkg ? path.dirname(process.execPath) : process.cwd());
 
 /*
   config
 */
+type Config = {
+  topPage: string;
+  pdfKeywords: string[];
+  projectTitle: string;
+}
+let config:Config;
+try {
+  config = toml.parse(fs.readFileSync(executionPath + '/config.toml', 'utf8'));
+} catch (error) {
+  console.log('tomlファイルなし、デフォルト設定')
+  config = {
+    topPage: "https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=0620060006600600",
+    pdfKeywords:  [
+      "公告",
+      "位置図",
+      "図面",
+      "参考資料"
+    ],
+    projectTitle: "設計"
+  }
+}
+
 const topPage:string = config.topPage; // 岩手県入札情報公開トップページ
 const pdfKeywords:string[] = config.pdfKeywords; // このキーワードを含むPDFをダウンロードする
 const projectTitle:string = config.projectTitle; // この業務名を含むものに絞る
-
-// exeとnodeで実行パスを変える
-const executionPath = path.join(process.pkg ? path.dirname(process.execPath) : process.cwd());
+console.log('業務名「' + projectTitle + '」を含む案件から、「' + pdfKeywords.join(', ') + '」をタイトルに含むPDFをダウンロードします');
 
 // sleep関数
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -23,9 +43,16 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // PDFダウンロードチェック関数
 const downloadCheck = (downloadHistory: DownloadEvent[]) => {
   // ダウンロード履歴を参照して存在していないファイルがあるプロジェクトのリストを返す
-  const failedDownloads:string[] = [];
+  type failedDownload = {
+    contractId: string;
+    contractName: string;
+    fileName: string;
+  }
+  const failedDownloads:failedDownload[] = [];
   downloadHistory.forEach(contract=> {
-    const folderName:string = contract.contractId + '_' + contract.contractName;
+    const contractId:string = contract.contractId;
+    const contractName:string = contract.contractName;
+    const folderName:string = contractId + '_' + contractName;
     const downloadPath:string = `${executionPath}/data/${folderName}/`;
     for (let i=0;i<contract.downloaded.length; i++) {
       const fileName = contract.downloaded[i];
@@ -33,7 +60,7 @@ const downloadCheck = (downloadHistory: DownloadEvent[]) => {
       const pdfExists:boolean = fs.existsSync(pdfPath);
       if (!pdfExists) {
         console.log('not exist:' + pdfPath);
-        failedDownloads.push(fileName);
+        failedDownloads.push({contractId, contractName, fileName});
       }
     }
   })
@@ -373,15 +400,6 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     project.downloaded.forEach(pdf=> systemLogger.info(`DL済: [${project.contractId}] ${project.contractName} ${pdf}`));
     project.notDownloaded.forEach(pdf=> systemLogger.info(`未DL: [${project.contractId}] ${project.contractName} ${pdf}`));
   })
-  /*
-  for (let i=0; i<downloadHistory.length; i++) {
-    const project = downloadHistory[i];
-
-    systemLogger.info(`[${project.contractId}] ${project.contractName}`);
-    systemLogger.info(`ダウンロード済: ${project.downloaded.join(', ')}`);
-    systemLogger.info(`未ダウンロード: ${project.notDownloaded.join(', ')}`);
-  }
-  */
 
   let downloadFailedTimer:NodeJS.Timeout;
   await Promise.race([
