@@ -419,6 +419,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   let browser:Browser;
   try {
     if (fs.existsSync('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe')) {
+      console.log('x86のChromeを使用');
       browser = await launch({
         headless: true,
         //slowMo: 50,
@@ -430,8 +431,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
         args: [
           '--no-sandbox',
           '--disable-features=site-per-process'
-        ],
-        channel: 'chrome'
+        ]
       });
     } else {
       browser = await launch({
