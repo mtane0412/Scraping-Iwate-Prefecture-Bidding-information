@@ -31,7 +31,7 @@ try {
     config.mail.sendEmailEnabled = (config.mail.sendEmailEnabled.toLowerCase() === 'true');
   }
 } catch (error) {
-  console.log('tomlファイルなし、デフォルト設定')
+  console.log('config.tomlファイルなし、デフォルト設定をロード')
   config = {
     topPage: "https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=0620060006600600",
     pdfKeywords:  [

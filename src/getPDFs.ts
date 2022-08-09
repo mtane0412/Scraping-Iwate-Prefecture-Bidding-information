@@ -115,29 +115,27 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     downloadsInProgress.add(guid);
   });
 
-  cdpSession.on('Browser.downloadProgress', ({ guid, state }) => {
-    if (state === 'inProgress') {
-      //console.log('download inProgress: ', guid);
-      clearTimeout(downloadCompletionTimer) // inProgress中はダウンロード完了タイマーを消す
-    }
-    if (state === 'completed') {
-      console.log('download completed: ', fileName);
-      downloadsInProgress.delete(guid);
-    }
-  });
-
   let downloadCompletionTimer:NodeJS.Timeout;
   const downloadProgress = new Promise<void>((resolve, reject) => {
     cdpSession.on(
       "Browser.downloadProgress",
-      (params: { state: "inProgress" | "completed" | "canceled" }) => {
-        if (downloadsInProgress.size === 0) {
-          downloadCompletionTimer = setTimeout(() => {
-            clearTimeout(downloadFailedTimer); // ダウンロードタイムアウトタイマーを消す
-            resolve();
-          }, 10000);
+      ({guid, state}) => {
+        if (state === 'inProgress') {
+          console.log('size: ' + downloadsInProgress.size);
+          clearTimeout(downloadCompletionTimer) // inProgress中はダウンロード完了タイマーを消す
         }
-        if (params.state == "canceled") {
+        if (state === 'completed') {
+          console.log('download completed: ', fileName);
+          downloadsInProgress.delete(guid);
+          console.log('size: ' + downloadsInProgress.size);
+          if (downloadsInProgress.size === 0) {
+            downloadCompletionTimer = setTimeout(() => {
+              clearTimeout(downloadFailedTimer); // ダウンロードタイムアウトタイマーを消す
+              resolve();
+            }, 10000);
+          }
+        }
+        if (state == "canceled") {
           reject("download cancelled");
         }
       }
@@ -262,7 +260,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   if (!downloadContracts.length) {
     // ダウンロードするものがない場合は終了
     systemLogger.info('新規ダウンロードなし');
-    text += "新規ダウンロードはありませんでした" // メール本文
+    text += "新規ダウンロードはありませんでした\n\n" // メール本文
     return; 
   }
 
