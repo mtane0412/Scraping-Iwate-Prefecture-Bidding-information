@@ -2,35 +2,9 @@ import { Browser, launch } from 'puppeteer';
 import * as path from 'path';
 import * as log4js from 'log4js';
 import * as fs from 'fs';
-import * as toml from 'toml';
-
-// exeとnodeで実行パスを変える
-const executionPath = path.join(process.pkg ? path.dirname(process.execPath) : process.cwd());
-
-/*
-  config
-*/
-type Config = {
-  topPage: string;
-  pdfKeywords: string[];
-  projectTitle: string;
-}
-let config:Config;
-try {
-  config = toml.parse(fs.readFileSync(executionPath + '/config.toml', 'utf8'));
-} catch (error) {
-  console.log('tomlファイルなし、デフォルト設定')
-  config = {
-    topPage: "https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=0620060006600600",
-    pdfKeywords:  [
-      "公告",
-      "位置図",
-      "図面",
-      "参考資料"
-    ],
-    projectTitle: "設計"
-  }
-}
+import {executionPath, config} from './config';
+import {systemLogger, errorLogger} from './logger';
+import { sendGmail } from './mail';
 
 const topPage:string = config.topPage; // 岩手県入札情報公開トップページ
 const pdfKeywords:string[] = config.pdfKeywords; // このキーワードを含むPDFをダウンロードする
@@ -41,7 +15,7 @@ console.log('業務名「' + projectTitle + '」を含む案件から、「' + p
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // PDFダウンロードチェック関数
-const downloadCheck = (downloadHistory: DownloadEvent[]) => {
+const downloadCheck = async (downloadHistory: DownloadEvent[]) => {
   // ダウンロード履歴を参照して存在していないファイルがあるプロジェクトのリストを返す
   type failedDownload = {
     contractId: string;
@@ -49,6 +23,7 @@ const downloadCheck = (downloadHistory: DownloadEvent[]) => {
     fileName: string;
   }
   const failedDownloads:failedDownload[] = [];
+  let failedDownloadsText:string = '';
   downloadHistory.forEach(contract=> {
     const contractId:string = contract.contractId;
     const contractName:string = contract.contractName;
@@ -61,6 +36,7 @@ const downloadCheck = (downloadHistory: DownloadEvent[]) => {
       if (!pdfExists) {
         console.log('not exist:' + pdfPath);
         failedDownloads.push({contractId, contractName, fileName});
+        failedDownloadsText += `${contractName}(${contractId}) - ${fileName}\n`;
       }
     }
   })
@@ -70,34 +46,11 @@ const downloadCheck = (downloadHistory: DownloadEvent[]) => {
   } else {
     console.log('以下のファイルがダウンロードに失敗した可能性があります。')
     console.table(failedDownloads);
+    text += '以下のファイルがダウンロードに失敗した可能性があります。\n'
+    text += failedDownloadsText;
   };
   return failedDownloads
 }
-
-/*
-  log出力用
-*/
-
-const logPath = `${executionPath}/logs/`;
-
-
-log4js.configure({
-  appenders : {
-    stdout: { type: 'stdout' },
-    system : {type : 'dateFile', filename : logPath + 'system/system', pattern: 'yyyy-MM-dd.log', alwaysIncludePattern: "true"},
-    error : {type : 'file', filename : logPath + 'debug/error.log'},
-    debug : {type : 'file', filename : logPath + 'debug/debug.log'}
-  },
-  categories : {
-    default : {appenders : ['system', 'stdout'], level : 'info'},
-    error : {appenders : ['error', 'stdout'], level: 'warn'},
-    debug : {appenders : ['debug', 'stdout'], level : 'debug'}
-  }
-});
-
-const systemLogger = log4js.getLogger('system');
-const errorLogger = log4js.getLogger('error');
-const debugLogger = log4js.getLogger('debug');
 
 /*
   ダウンロード履歴用
@@ -113,7 +66,7 @@ type DownloadEvent = {
 let downloadHistory:DownloadEvent[] = [];
 
 try {
-   downloadHistory = JSON.parse(fs.readFileSync(logPath + 'downloadHistory.json', 'utf8'));
+   downloadHistory = JSON.parse(fs.readFileSync('./downloadHistory.json', 'utf8'));
 } catch(err) {
   if (err.code === 'ENOENT') {
     console.log('downloadHistory.jsonを作成');
@@ -121,6 +74,18 @@ try {
     errorLogger.error(err);
   }
 }
+
+/*
+  メール送信設定
+*/
+
+const today:string = new Date().toLocaleDateString(); // 今日の日付
+const subject:string = `岩手県入札情報DL結果(${today})`;
+let text:string = "";
+
+/*
+  ダウンローダー本体
+*/
 
 const getPDFs = async (browser:Browser): Promise<string> => {
   process.on('unhandledRejection', (reason, promise) => {
@@ -297,8 +262,11 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   if (!downloadContracts.length) {
     // ダウンロードするものがない場合は終了
     systemLogger.info('新規ダウンロードなし');
+    text += "新規ダウンロードはありませんでした" // メール本文
     return; 
   }
+
+  text += `${today}のダウンロード結果\n\n`; // メール本文
 
   for (let i=0; i<downloadContracts.length; i++) {
     // 業務名クリック → 発注情報閲覧へ移動
@@ -315,7 +283,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     const folderName:string = contractId + '_' + contractName;
     
     // ダウンロード先の設定
-    const downloadPath = `${executionPath}/data/${folderName}/`;
+    const downloadPath = path.resolve(`${executionPath}/data/${folderName}/`);
     await cdpSession.send("Browser.setDownloadBehavior", {
       behavior: "allow",
       downloadPath,
@@ -386,6 +354,13 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       notDownloaded
     });
 
+    // メール本文に結果を追記
+    text +='**********************************************************************';
+    text += `\n\n${contractName} (${contractId})\n`
+    text += '【DL済】\n' + downloaded.map(x=>'・' + x).join('\n') + '\n';
+    text += '【未DL】\n' + notDownloaded.map(x=>'・' + x).join('\n') + '\n';
+    text += '\n\n'
+
     // 戻るをクリック → 発注情報検索画面に戻る
     await Promise.all([
       frame.waitForNavigation(),
@@ -393,7 +368,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     ]);
   }
 
-  fs.writeFileSync(logPath + 'downloadHistory.json', JSON.stringify(downloadHistory, null, 2));
+  fs.writeFileSync('./downloadHistory.json', JSON.stringify(downloadHistory, null, 2));
 
   // ロギング
   downloadHistory.forEach(project => {
@@ -418,12 +393,12 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   // ブラウザ立ち上げ
   let browser:Browser;
   try {
-    if (fs.existsSync('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe')) {
+    if (fs.existsSync(path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'))) {
       console.log('x86のChromeを使用');
       browser = await launch({
         headless: true,
         //slowMo: 50,
-        executablePath: 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        executablePath: path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'),
         defaultViewport: {
           width: 1280,
           height: 882
@@ -454,14 +429,21 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   // ダウンロード実行
   try {
     await getPDFs(browser);
-    downloadCheck(downloadHistory);
+    await downloadCheck(downloadHistory);
   } catch(error) {
     errorLogger.error(error);
+    text+= '\n\n【エラー情報】\n'
+    text+= error;
+    /*
     log4js.shutdown((err)=> {
       if (err) throw err;
       process.exit(1);
     });
+    */
   } finally {
+    if(config.mail.sendEmailEnabled) {
+      await sendGmail(subject, text);
+    }
     await browser.close();
   };
 })();

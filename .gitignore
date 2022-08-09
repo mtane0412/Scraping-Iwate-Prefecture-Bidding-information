@@ -183,3 +183,4 @@ dist
 #User
 data/
 config.toml
+downloadHistory.json
