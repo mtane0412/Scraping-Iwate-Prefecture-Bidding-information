@@ -17,9 +17,19 @@ pdfKeywords = [
 # この業務名を含むものに絞る
 projectTitle = "設計"
 
+# ダウンロード待機時間(秒)
+# ダウンロードされないファイルがある場合はここを伸ばしてください
+downloadBufferSec = 30
+
 # Gmail送信機能設定
 [mail]
 sendEmailEnabled = false                # メール送信をするかどうか (true or false)
 user = "example@gmail.com"              # Gamilのuser名(xxx@gmail.com)
 pass = "yourapppassword"                # GoogleのAppパスワード
 to = "example@gmail.com"                # 送信先メールアドレス(複数設定の例: "email1@example.com, email2@example.coom")
+
+# debug用
+[debug]
+debugEnabled = false                  # debugモードを有効にする (true or flase)
+headless = true                       # headlessモードを有効にする (true or false)
+pdfClickTimer = 3                     # PDFリンクのクリックのスリープ時間 (秒)

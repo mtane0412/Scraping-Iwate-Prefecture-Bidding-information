@@ -1,6 +1,22 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as toml from 'toml';
+import { LaunchOptions, BrowserLaunchArgumentOptions, BrowserConnectOptions } from 'puppeteer';
+
+
+// Puppeteerのlaunch オプション
+const launchOptions:LaunchOptions & BrowserLaunchArgumentOptions & BrowserConnectOptions = {
+  headless: true,
+  //slowMo: 50,
+  defaultViewport: {
+    width: 1280,
+    height: 882
+  },
+  args: [
+    '--no-sandbox',
+    '--disable-features=site-per-process'
+  ]
+}
 
 // exeとnodeで実行パスを変える
 const executionPath = path.join(process.pkg ? path.dirname(process.execPath) : process.cwd());
@@ -16,11 +32,19 @@ type EmailConfig = {
   to: string;
 }
 
+type DebugConfig = {
+  debugEnabled: boolean;
+  headless: boolean;
+  pdfClickTimer: number;
+}
+
 type Config = {
   topPage: string;
   pdfKeywords: string[];
   projectTitle: string;
+  downloadBufferSec: number;
   mail: EmailConfig;
+  debug: DebugConfig;
 }
 
 let config:Config;
@@ -42,13 +66,19 @@ try {
       "平面図"
     ],
     projectTitle: "設計",
+    downloadBufferSec: 30,
     mail : {
       sendEmailEnabled: false,
       user: "",
       pass: "",
       to: ""
+    },
+    debug : {
+      debugEnabled: false,
+      headless: true,
+      pdfClickTimer: 3
     }
   }
 }
 
-export {executionPath, config}
+export {launchOptions, executionPath, config}

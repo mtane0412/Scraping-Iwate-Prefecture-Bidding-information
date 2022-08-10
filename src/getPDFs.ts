@@ -1,14 +1,18 @@
-import { Browser, launch } from 'puppeteer';
+import { Browser, BrowserConnectOptions, BrowserLaunchArgumentOptions, launch, LaunchOptions } from 'puppeteer';
 import * as path from 'path';
-import * as log4js from 'log4js';
 import * as fs from 'fs';
-import {executionPath, config} from './config';
+import { launchOptions, executionPath, config } from './config';
 import {systemLogger, errorLogger} from './logger';
 import { sendGmail } from './mail';
 
 const topPage:string = config.topPage; // 岩手県入札情報公開トップページ
 const pdfKeywords:string[] = config.pdfKeywords; // このキーワードを含むPDFをダウンロードする
 const projectTitle:string = config.projectTitle; // この業務名を含むものに絞る
+let downloadBuffer:number = config.downloadBufferSec * 1000;
+if (downloadBuffer < 10000) {
+  downloadBuffer = 10000;
+  console.log('ダウンロード待ち時間が短すぎます');
+}
 console.log('業務名「' + projectTitle + '」を含む案件から、「' + pdfKeywords.join(', ') + '」をタイトルに含むPDFをダウンロードします');
 
 // sleep関数
@@ -94,8 +98,9 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   
   const page = (await browser.pages())[0];
   await page.setUserAgent('bot');
+  page.setDefaultTimeout(90000); // 遷移のタイムアウトを90秒に変更
   // console.logデバッグしたいときに
-  page.on('console', msg => console.log(msg.text()));
+  // page.on('console', msg => console.log(msg.text()));
 
   const res = await page.goto(topPage, {waitUntil: "domcontentloaded"});
   if (!res.ok()) {
@@ -104,45 +109,6 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   }
 
   const cdpSession = await page.target().createCDPSession();
-
-
-  let fileName:string = '';
-  const downloadsInProgress:Set<string> = new Set();
-
-  cdpSession.on('Browser.downloadWillBegin', ({ guid, suggestedFilename }) => {
-    fileName = suggestedFilename;
-    // console.log('download beginning,', fileName);
-    downloadsInProgress.add(guid);
-  });
-
-  let downloadCompletionTimer:NodeJS.Timeout;
-  const downloadProgress = new Promise<void>((resolve, reject) => {
-    cdpSession.on(
-      "Browser.downloadProgress",
-      ({guid, state}) => {
-        if (state === 'inProgress') {
-          console.log('size: ' + downloadsInProgress.size);
-          clearTimeout(downloadCompletionTimer) // inProgress中はダウンロード完了タイマーを消す
-        }
-        if (state === 'completed') {
-          console.log('download completed: ', fileName);
-          downloadsInProgress.delete(guid);
-          console.log('size: ' + downloadsInProgress.size);
-          if (downloadsInProgress.size === 0) {
-            downloadCompletionTimer = setTimeout(() => {
-              clearTimeout(downloadFailedTimer); // ダウンロードタイムアウトタイマーを消す
-              resolve();
-            }, 10000);
-          }
-        }
-        if (state == "canceled") {
-          reject("download cancelled");
-        }
-      }
-    );
-  });
-
-  
 
   await cdpSession.send('Fetch.enable', { // Fetchを有効に
     patterns: [{ urlPattern: '*', requestStage: 'Response' }] // ResponseステージをFetch
@@ -179,7 +145,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       const requestType = request.resourceType();
       const requestMethod = request.method();
       const requestUrl = request.url();
-      if(requestType === 'document' && requestMethod === 'POST') console.log(requestUrl);
+      //if(requestType === 'document' && requestMethod === 'POST') console.log(requestUrl);
       request.continue();
   });
 
@@ -295,13 +261,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     }
 
     const downloadPdfs:downloadPdf[] = await frame.evaluate(async (btnSelector:string, pdfKeywords:string[]) => {
-      // this executes in the page
-
       const links:NodeListOf<Element> = document.querySelectorAll(btnSelector);
-      //const downloaded:string[] = [];
-      //const notDownloaded:string[] = [];
-      
-
       const downloadPdfs:downloadPdf[] = Array.from(links)
         .filter(link => link.textContent.replace(/\s/g, '') !== '') // 空行除太郎
         .map(link => {
@@ -322,8 +282,43 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       return downloadPdfs;
     }, 'a[href^="javascript:download"]', pdfKeywords);
 
-    //console.log('downloadPdfs');
-    //console.log(downloadPdfs);
+
+    const downloadList:Map<string, string> = new Map();
+
+    cdpSession.on('Browser.downloadWillBegin', ({ guid, suggestedFilename }) => {
+      console.log('download beginning:', suggestedFilename);
+      downloadList.set(guid, suggestedFilename);
+    });
+
+    const downloadNum = downloadPdfs.filter(downloadPdf => downloadPdf.enableDownload === true).length;
+    let downloadedNum = 0;
+    let downloadFailedTimer:NodeJS.Timeout;
+    const downloadProgress = new Promise<void>((resolve, reject) => {
+      cdpSession.on(
+        "Browser.downloadProgress",
+        async ({guid, state}) => {
+          //console.log(guid, state);
+          if (state === 'inProgress') {
+            //console.log('downloading: ', downloadList.get(guid));
+            //console.log(downloadedNum + ' / ' + downloadNum);
+          }
+          if (state === 'completed') {
+            console.log('download completed: ', downloadList.get(guid));
+            downloadedNum += 1;
+            //console.log(downloadedNum + ' / ' + downloadNum);
+          }
+          if (downloadedNum === downloadNum) {
+            console.log(contractName + ': ダウンロード完了');
+            clearTimeout(downloadFailedTimer); // ダウンロードタイムアウトタイマーを消す
+            //console.log(downloadedNum + ' / ' + downloadNum);
+            resolve();
+          }
+          if (state == "canceled") {
+            reject("download cancelled");
+          }
+        }
+      );
+    });
 
     let downloaded:string[] = [];
     let notDownloaded:string[] = [];
@@ -332,12 +327,14 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       if (downloadPdf.enableDownload){
         // キーワードが含まれるPDFはダウンロードする
         const selector:string = `a[href="${downloadPdf.href}"]`;
-        await Promise.all([
-          frame.waitForSelector(selector),
-          frame.click(selector),
-          downloaded.push(downloadPdf.fileName), // ダウンロード履歴にダウンロード対象として追加
-          sleep(1000)
-        ]);
+        await frame.waitForSelector(selector);
+        await frame.click(selector);
+        downloaded.push(downloadPdf.fileName); // ダウンロード履歴にダウンロード対象として追加
+        if (config.debug.debugEnabled && config.debug.pdfClickTimer > 0) {
+          await sleep(config.debug.pdfClickTimer * 1000);
+        } else {
+          await sleep(1000);
+        }
       } else {
         // キーワードが含まれないPDFはダウンロードしない
         notDownloaded.push(downloadPdf.fileName) // ダウンロード履歴にダウンロード対象外として追加
@@ -359,6 +356,18 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     text += '【未DL】\n' + notDownloaded.map(x=>'・' + x).join('\n') + '\n';
     text += '\n\n'
 
+    await Promise.race([
+      downloadProgress,
+      new Promise<boolean>((_resolve, reject) => {
+        downloadFailedTimer = setTimeout(() => {
+          reject("download timed out");
+        }, 180000);
+      }),
+    ]);
+
+    cdpSession.removeAllListeners("Browser.downloadWillBegin");
+    cdpSession.removeAllListeners("Browser.downloadProgress");
+    clearTimeout(downloadFailedTimer);
     // 戻るをクリック → 発注情報検索画面に戻る
     await Promise.all([
       frame.waitForNavigation(),
@@ -367,22 +376,6 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   }
 
   fs.writeFileSync('./downloadHistory.json', JSON.stringify(downloadHistory, null, 2));
-
-  // ロギング
-  downloadHistory.forEach(project => {
-    project.downloaded.forEach(pdf=> systemLogger.info(`DL済: [${project.contractId}] ${project.contractName} ${pdf}`));
-    project.notDownloaded.forEach(pdf=> systemLogger.info(`未DL: [${project.contractId}] ${project.contractName} ${pdf}`));
-  })
-
-  let downloadFailedTimer:NodeJS.Timeout;
-  await Promise.race([
-    downloadProgress,
-    new Promise<boolean>((_resolve, reject) => {
-      downloadFailedTimer = setTimeout(() => {
-        reject("download timed out");
-      }, 30000);
-    }),
-  ]);
 };
 
 
@@ -390,36 +383,18 @@ const getPDFs = async (browser:Browser): Promise<string> => {
 (async () => {
   // ブラウザ立ち上げ
   let browser:Browser;
+  if (config.debug.debugEnabled && typeof config.debug.headless === 'boolean') {
+    launchOptions.headless = config.debug.headless;
+  }
   try {
     if (fs.existsSync(path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'))) {
+      // Win x86フォルダにインストールされている場合
       console.log('x86のChromeを使用');
-      browser = await launch({
-        headless: true,
-        //slowMo: 50,
-        executablePath: path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'),
-        defaultViewport: {
-          width: 1280,
-          height: 882
-        },
-        args: [
-          '--no-sandbox',
-          '--disable-features=site-per-process'
-        ]
-      });
+      launchOptions.executablePath = path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe');
+      browser = await launch(launchOptions);
     } else {
-      browser = await launch({
-        headless: true,
-        //slowMo: 50,
-        defaultViewport: {
-          width: 1280,
-          height: 882
-        },
-        args: [
-          '--no-sandbox',
-          '--disable-features=site-per-process'
-        ],
-        channel: 'chrome'
-      });
+      launchOptions.channel = 'chrome';
+      browser = await launch(launchOptions);
     }
   } catch (error) {
     errorLogger.error(error);
