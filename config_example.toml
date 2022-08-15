@@ -17,9 +17,9 @@ pdfKeywords = [
 # この業務名を含むものに絞る
 projectTitle = "設計"
 
-# ダウンロード待機時間(秒)
-# ダウンロードされないファイルがある場合はここを伸ばしてください
-downloadBufferSec = 30
+# ダウンロードされないファイルがある場合の調整項目
+downloadBufferSec = 30                    # ダウンロード最終待機時間(秒)
+pdfClickDelaySec = 3                      # PDFリンクのクリックのスリープ時間 (秒)
 
 # Gmail送信機能設定
 [mail]
@@ -32,4 +32,3 @@ to = "example@gmail.com"                # 送信先メールアドレス(複数�
 [debug]
 debugEnabled = false                  # debugモードを有効にする (true or flase)
 headless = true                       # headlessモードを有効にする (true or false)
-pdfClickTimer = 3                     # PDFリンクのクリックのスリープ時間 (秒)

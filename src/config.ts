@@ -35,7 +35,6 @@ type EmailConfig = {
 type DebugConfig = {
   debugEnabled: boolean;
   headless: boolean;
-  pdfClickTimer: number;
 }
 
 type Config = {
@@ -43,6 +42,7 @@ type Config = {
   pdfKeywords: string[];
   projectTitle: string;
   downloadBufferSec: number;
+  pdfClickDelaySec: number;
   mail: EmailConfig;
   debug: DebugConfig;
 }
@@ -67,6 +67,7 @@ try {
     ],
     projectTitle: "設計",
     downloadBufferSec: 30,
+    pdfClickDelaySec: 3,
     mail : {
       sendEmailEnabled: false,
       user: "",
@@ -75,8 +76,7 @@ try {
     },
     debug : {
       debugEnabled: false,
-      headless: true,
-      pdfClickTimer: 3
+      headless: true
     }
   }
 }

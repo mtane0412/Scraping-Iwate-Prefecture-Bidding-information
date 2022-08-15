@@ -330,8 +330,8 @@ const getPDFs = async (browser:Browser): Promise<string> => {
         await frame.waitForSelector(selector);
         await frame.click(selector);
         downloaded.push(downloadPdf.fileName); // ダウンロード履歴にダウンロード対象として追加
-        if (config.debug.debugEnabled && config.debug.pdfClickTimer > 0) {
-          await sleep(config.debug.pdfClickTimer * 1000);
+        if (config.debug.debugEnabled && config.pdfClickDelaySec > 0) {
+          await sleep(config.pdfClickDelaySec * 1000);
         } else {
           await sleep(1000);
         }
@@ -356,12 +356,13 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     text += '【未DL】\n' + notDownloaded.map(x=>'・' + x).join('\n') + '\n';
     text += '\n\n'
 
+    const donwloadTimeoutDelay:number = 180000;
     await Promise.race([
       downloadProgress,
       new Promise<boolean>((_resolve, reject) => {
         downloadFailedTimer = setTimeout(() => {
           reject("download timed out");
-        }, 180000);
+        }, donwloadTimeoutDelay);
       }),
     ]);
 
