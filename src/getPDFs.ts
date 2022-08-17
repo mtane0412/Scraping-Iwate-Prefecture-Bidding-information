@@ -1,4 +1,4 @@
-import { Browser, BrowserConnectOptions, BrowserLaunchArgumentOptions, launch, LaunchOptions } from 'puppeteer';
+import { Browser, launch } from 'puppeteer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { launchOptions, executionPath, config } from './config';
@@ -170,7 +170,20 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   ]);
 
   // 発注情報検索: 表示件数を1ページ100件に
-  await frame.select('select[name="A300"]', '040');
+  let numberOfItemsValue: '010'|'020'|'030'|'040';
+  switch(config.numberOfItems) {
+    case 10:
+      numberOfItemsValue = '010';
+    case 25:
+      numberOfItemsValue = '020';
+    case 50:
+      numberOfItemsValue = '030';
+    case 100:
+    default:
+      numberOfItemsValue = '040';
+  }
+  await frame.select('select[name="A300"]', numberOfItemsValue);
+  console.log('表示件数: ', config.numberOfItems)
 
   // 発注情報検索: 業務名を入力して絞る
   await frame.type('[name="koujimei"]', projectTitle);
@@ -191,6 +204,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     contractName: string;
     linkArg: string;
     releaseDate: string;
+    isNew: boolean;
   }
 
   let downloadContracts:Contract[] = await frame2.evaluate(() => {
@@ -198,25 +212,30 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     const contracts:Contract[] = [];
     for (let i=0; i < trs.length; i++) {
       const tr = trs[i];
-      if(tr.children[0].firstElementChild && tr.children[0].firstElementChild.tagName === 'IMG') {
-        // 公開日に画像(New)があるとき
-        const releaseDate:string = tr.children[0].textContent.replace(/\s/g, '');
-        const contractName:string = tr.children[1].textContent.replace(/\s/g, '');
-        const contractId:string = tr.children[2].textContent.replace(/\s/g, '');
-        const linkArg:string = tr.children[1].firstElementChild.getAttribute('href');
-        const contract:Contract = {
-          contractId,
-          contractName,
-          linkArg,
-          releaseDate
-        }
-        contracts.push(contract);
+      const releaseDate:string = tr.children[0].textContent.replace(/\s/g, '');
+      const contractName:string = tr.children[1].textContent.replace(/\s/g, '');
+      const contractId:string = tr.children[2].textContent.replace(/\s/g, '');
+      const linkArg:string = tr.children[1].firstElementChild.getAttribute('href');
+      const isNew:boolean = tr.children[0].firstElementChild && tr.children[0].firstElementChild.tagName === 'IMG'; // 公開日に画像(New)があるものはNew
+      const contract:Contract = {
+        contractId,
+        contractName,
+        linkArg,
+        releaseDate,
+        isNew
       }
+      contracts.push(contract);
     }
     return contracts
   });
 
   const downloadedIdList = downloadHistory.map(contract => contract.contractId);
+
+  console.log('Newのみをダウンロード: ' , config.downloadOnlyNew);
+  // NewのみをダウンロードするときはNew以外を除外
+  if (config.downloadOnlyNew) {
+    downloadContracts = downloadContracts.filter(contract => contract.isNew)
+  }
 
   // ダウンロードプロジェクトリストからダウンロード済みのプロジェクトを除外
   downloadContracts = downloadContracts.filter(contract => !downloadedIdList.includes(contract.contractId));
@@ -293,7 +312,17 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     const downloadNum = downloadPdfs.filter(downloadPdf => downloadPdf.enableDownload === true).length;
     let downloadedNum = 0;
     let downloadFailedTimer:NodeJS.Timeout;
+    let downloaded:string[] = [];
+    let notDownloaded:string[] = [];
+
     const downloadProgress = new Promise<void>((resolve, reject) => {
+      
+      // ダウンロードするPDFが0のときは次へ
+      if (downloadNum === 0) {
+        console.log('ダウンロードするPDFがありません');
+        resolve();
+      }
+
       cdpSession.on(
         "Browser.downloadProgress",
         async ({guid, state}) => {
@@ -304,6 +333,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
           }
           if (state === 'completed') {
             console.log('download completed: ', downloadList.get(guid));
+            downloaded.push(downloadList.get(guid)); // ダウンロード履歴にダウンロード対象として追加
             downloadedNum += 1;
             //console.log(downloadedNum + ' / ' + downloadNum);
           }
@@ -320,8 +350,6 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       );
     });
 
-    let downloaded:string[] = [];
-    let notDownloaded:string[] = [];
     for (let i=0; i<downloadPdfs.length; i++) {
       const downloadPdf = downloadPdfs[i];
       if (downloadPdf.enableDownload){
@@ -329,7 +357,6 @@ const getPDFs = async (browser:Browser): Promise<string> => {
         const selector:string = `a[href="${downloadPdf.href}"]`;
         await frame.waitForSelector(selector);
         await frame.click(selector);
-        downloaded.push(downloadPdf.fileName); // ダウンロード履歴にダウンロード対象として追加
         if (config.debug.debugEnabled && config.pdfClickDelaySec > 0) {
           await sleep(config.pdfClickDelaySec * 1000);
         } else {

@@ -8,6 +8,12 @@ topPage = "https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=06200
 # この業務名を含むものに絞る
 projectTitle = "設計"
 
+# ダウンロードする案件をNew(1週間以内)がついたものに限る (true or false)
+downloadOnlyNew = true
+
+# 1ページあたりの表示件数 (10, 25, 50, 100)
+numberOfItems = 100
+
 # このキーワードを含むPDFをダウンロードする
 pdfKeywords = [
   "公告",

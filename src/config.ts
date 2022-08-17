@@ -41,6 +41,8 @@ type Config = {
   topPage: string;
   pdfKeywords: string[];
   projectTitle: string;
+  downloadOnlyNew: boolean|string;
+  numberOfItems: 10|25|50|100;
   downloadBufferSec: number;
   pdfClickDelaySec: number;
   mail: EmailConfig;
@@ -50,9 +52,22 @@ type Config = {
 let config:Config;
 try {
   config = toml.parse(fs.readFileSync(executionPath + '/config.toml', 'utf8'));
+  
+  // 設定を文字列で記述した場合にbool値に変換する
   if (typeof config.mail.sendEmailEnabled !== 'boolean') {
-    // 人が文字列で設定してしまった場合にbool値にする
     config.mail.sendEmailEnabled = (config.mail.sendEmailEnabled.toLowerCase() === 'true');
+  }
+  if (typeof config.downloadOnlyNew !== 'boolean') {
+    config.downloadOnlyNew = (config.downloadOnlyNew.toLowerCase() === 'true');
+  }
+  console.log('downloadOnlyNew: ' ,config.downloadOnlyNew);
+
+  // 表示件数の値が不正なときに100をセット
+  const itemNumbers = [10, 25, 50, 100];
+  if (!itemNumbers.includes(config.numberOfItems)) {
+    console.log('表示件数の設定が不正です。10, 25, 50, 100のいずれかで数値を設定する必要があります');
+    console.log('表示件数を100に設定しました');
+    config.numberOfItems = 100; // 100を設定
   }
 } catch (error) {
   console.log('config.tomlファイルなし、デフォルト設定をロード')
@@ -66,6 +81,8 @@ try {
       "平面図"
     ],
     projectTitle: "設計",
+    downloadOnlyNew: true,
+    numberOfItems: 100,
     downloadBufferSec: 30,
     pdfClickDelaySec: 3,
     mail : {
