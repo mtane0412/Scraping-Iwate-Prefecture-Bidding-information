@@ -70,7 +70,7 @@ type DownloadEvent = {
 let downloadHistory:DownloadEvent[] = [];
 
 try {
-   downloadHistory = JSON.parse(fs.readFileSync('./downloadHistory.json', 'utf8'));
+   downloadHistory = JSON.parse(fs.readFileSync(`${executionPath}/downloadHistory.json`, 'utf8'));
 } catch(err) {
   if (err.code === 'ENOENT') {
     console.log('downloadHistory.jsonを作成');
@@ -403,7 +403,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     ]);
   }
 
-  fs.writeFileSync('./downloadHistory.json', JSON.stringify(downloadHistory, null, 2));
+  fs.writeFileSync(`${executionPath}/downloadHistory.json`, JSON.stringify(downloadHistory, null, 2));
 };
 
 
