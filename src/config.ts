@@ -38,6 +38,7 @@ type DebugConfig = {
 }
 
 type Config = {
+  chromePath?: string;
   topPage: string;
   pdfKeywords: string[];
   projectTitle: string;

@@ -2,6 +2,9 @@
 # 文字列はダブルクオーテーションで囲ってください
 # sample = "サンプル"
 
+# Chromeのパス(ChromeをCドライブ以外にインストールしているなど、特殊な状況のときに # を外して使用)
+# chromePath = "D:\Program Files\Google\Chrome\Application\chrome.exe"
+
 # 岩手県入札情報公開サービストップページ
 topPage = "https://www.epi-cloud.fwd.ne.jp/koukai/do/KF001ShowAction?name1=0620060006600600"
 

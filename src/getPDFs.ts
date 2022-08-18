@@ -420,6 +420,9 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       console.log('x86のChromeを使用');
       launchOptions.executablePath = path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe');
       browser = await launch(launchOptions);
+    } else if (config.chromePath) {
+      console.log('次のChromeを使用: ', config.chromePath);
+      launchOptions.executablePath = path.resolve(config.chromePath);
     } else {
       launchOptions.channel = 'chrome';
       browser = await launch(launchOptions);
