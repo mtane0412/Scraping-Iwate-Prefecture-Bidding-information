@@ -8,7 +8,7 @@ import { sendGmail } from './mail';
 const topPage:string = config.topPage; // 岩手県入札情報公開トップページ
 const pdfKeywords:string[] = config.pdfKeywords; // このキーワードを含むPDFをダウンロードする
 const projectTitle:string = config.projectTitle; // この業務名を含むものに絞る
-let downloadBuffer:number = config.downloadBufferSec * 1000;
+let downloadBuffer:number = config.downloadTimeoutSec * 1000;
 if (downloadBuffer < 10000) {
   downloadBuffer = 10000;
   console.log('ダウンロード待ち時間が短すぎます。10秒に設定しました。');
@@ -184,7 +184,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   }
   await frame.select('select[name="A300"]', numberOfItemsValue);
   console.log('案件表示件数:', config.numberOfItems);
-  console.log('案件ごとのダウンロードタイムアウト時間:', config.downloadBufferSec, '秒');
+  console.log('案件ごとのダウンロードタイムアウト時間:', config.downloadTimeoutSec, '秒');
   console.log('各PDFクリックディレイ:', config.pdfClickDelaySec, '秒');
 
   // 発注情報検索: 業務名を入力して絞る

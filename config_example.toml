@@ -27,7 +27,7 @@ pdfKeywords = [
 ]
 
 # ダウンロードされないファイルがある場合の調整項目
-downloadBufferSec = 30                    # 案件ごとのダウンロードタイムアウト時間(秒)
+downloadTimeoutSec = 30                    # 案件ごとのダウンロードタイムアウト時間(秒)
 pdfClickDelaySec = 3                      # PDFリンクのクリックのスリープ時間 (秒)
 
 # Gmail送信機能設定

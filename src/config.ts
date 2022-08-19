@@ -44,7 +44,7 @@ type Config = {
   projectTitle: string;
   downloadOnlyNew: boolean|string;
   numberOfItems: 10|25|50|100;
-  downloadBufferSec: number;
+  downloadTimeoutSec: number;
   pdfClickDelaySec: number;
   mail: EmailConfig;
   debug: DebugConfig;
@@ -83,7 +83,7 @@ try {
     projectTitle: "設計",
     downloadOnlyNew: true,
     numberOfItems: 100,
-    downloadBufferSec: 30,
+    downloadTimeoutSec: 30,
     pdfClickDelaySec: 3,
     mail : {
       sendEmailEnabled: false,
