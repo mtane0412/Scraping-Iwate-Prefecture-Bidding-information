@@ -44,6 +44,7 @@ type Config = {
   projectTitle: string;
   downloadOnlyNew: boolean|string;
   numberOfItems: 10|25|50|100;
+  fileCheckEnabled: boolean|string;
   downloadTimeoutSec: number;
   pdfClickDelaySec: number;
   mail: EmailConfig;
@@ -58,8 +59,13 @@ try {
   if (typeof config.mail.sendEmailEnabled !== 'boolean') {
     config.mail.sendEmailEnabled = (config.mail.sendEmailEnabled.toLowerCase() === 'true');
   }
+
   if (typeof config.downloadOnlyNew !== 'boolean') {
     config.downloadOnlyNew = (config.downloadOnlyNew.toLowerCase() === 'true');
+  }
+
+  if (typeof config.fileCheckEnabled !== 'boolean') {
+    config.fileCheckEnabled = (config.fileCheckEnabled.toLowerCase() === 'true');
   }
 
   // 表示件数の値が不正なときに100をセット
@@ -83,6 +89,7 @@ try {
     projectTitle: "設計",
     downloadOnlyNew: true,
     numberOfItems: 100,
+    fileCheckEnabled: false,
     downloadTimeoutSec: 30,
     pdfClickDelaySec: 3,
     mail : {

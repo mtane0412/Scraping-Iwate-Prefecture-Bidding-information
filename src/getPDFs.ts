@@ -18,8 +18,8 @@ console.log('業務名「' + projectTitle + '」を含む案件から、「' + p
 // sleep関数
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// PDFダウンロードチェック関数
-const downloadCheck = async (downloadHistory: DownloadEvent[]) => {
+// ダウンロードPDFをチェックする関数
+const checkFiles = async (downloadHistory: DownloadEvent[]) => {
   // ダウンロード履歴を参照して存在していないファイルがあるプロジェクトのリストを返す
   type failedDownload = {
     contractId: string;
@@ -436,7 +436,8 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   // ダウンロード実行
   try {
     await getPDFs(browser);
-    await downloadCheck(downloadHistory);
+    // ファイルチェックが有効のときにファイルをチェックする
+    if(config.fileCheckEnabled) await checkFiles(downloadHistory);
   } catch(error) {
     errorLogger.error(error);
     text+= '\n\n【エラー情報】\n'
