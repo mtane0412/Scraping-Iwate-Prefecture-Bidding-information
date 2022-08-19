@@ -378,6 +378,8 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       notDownloaded
     });
 
+    systemLogger.info(contractId, contractName, '\n  ダウンロード済ファイル\n    ・' + downloaded.join('\n    ・'), '\n  未ダウンロードファイル\n    ・' + notDownloaded.join('\n    ・'));
+
     // メール本文に結果を追記
     text +='**********************************************************************';
     text += `\n\n${contractName} (${contractId})\n`
