@@ -61,7 +61,6 @@ try {
   if (typeof config.downloadOnlyNew !== 'boolean') {
     config.downloadOnlyNew = (config.downloadOnlyNew.toLowerCase() === 'true');
   }
-  console.log('downloadOnlyNew: ' ,config.downloadOnlyNew);
 
   // 表示件数の値が不正なときに100をセット
   const itemNumbers = [10, 25, 50, 100];

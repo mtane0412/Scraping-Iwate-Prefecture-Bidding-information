@@ -11,7 +11,7 @@ const projectTitle:string = config.projectTitle; // この業務名を含むも�
 let downloadBuffer:number = config.downloadBufferSec * 1000;
 if (downloadBuffer < 10000) {
   downloadBuffer = 10000;
-  console.log('ダウンロード待ち時間が短すぎます');
+  console.log('ダウンロード待ち時間が短すぎます。10秒に設定しました。');
 }
 console.log('業務名「' + projectTitle + '」を含む案件から、「' + pdfKeywords.join(', ') + '」をタイトルに含むPDFをダウンロードします');
 
@@ -183,7 +183,9 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       numberOfItemsValue = '040';
   }
   await frame.select('select[name="A300"]', numberOfItemsValue);
-  console.log('表示件数: ', config.numberOfItems)
+  console.log('案件表示件数:', config.numberOfItems);
+  console.log('案件ごとのダウンロードタイムアウト時間:', downloadBuffer, '秒');
+  console.log('各PDFクリックディレイ:', config.pdfClickDelaySec, '秒');
 
   // 発注情報検索: 業務名を入力して絞る
   await frame.type('[name="koujimei"]', projectTitle);
@@ -357,7 +359,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
         const selector:string = `a[href="${downloadPdf.href}"]`;
         await frame.waitForSelector(selector);
         await frame.click(selector);
-        if (config.debug.debugEnabled && config.pdfClickDelaySec > 0) {
+        if (config.pdfClickDelaySec > 0) {
           await sleep(config.pdfClickDelaySec * 1000);
         } else {
           await sleep(1000);
@@ -383,13 +385,12 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     text += '【未DL】\n' + notDownloaded.map(x=>'・' + x).join('\n') + '\n';
     text += '\n\n'
 
-    const donwloadTimeoutDelay:number = 180000;
     await Promise.race([
       downloadProgress,
       new Promise<boolean>((_resolve, reject) => {
         downloadFailedTimer = setTimeout(() => {
           reject("download timed out");
-        }, donwloadTimeoutDelay);
+        }, downloadBuffer);
       }),
     ]);
 
