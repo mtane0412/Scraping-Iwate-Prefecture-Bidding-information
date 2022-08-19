@@ -1,7 +1,7 @@
 import { Browser, launch } from 'puppeteer';
 import * as path from 'path';
 import * as fs from 'fs';
-import { launchOptions, config } from './config';
+import { launchOptions, executionPath, config } from './config';
 import {systemLogger, errorLogger} from './logger';
 import { sendGmail } from './mail';
 
@@ -32,7 +32,7 @@ const downloadCheck = async (downloadHistory: DownloadEvent[]) => {
     const contractId:string = contract.contractId;
     const contractName:string = contract.contractName;
     const folderName:string = contractId + '_' + contractName;
-    const downloadPath:string = path.join(__dirname, `data/${folderName}/`);
+    const downloadPath:string = path.join(executionPath, `data/${folderName}/`);
     for (let i=0;i<contract.downloaded.length; i++) {
       const fileName = contract.downloaded[i];
       const pdfPath = downloadPath + fileName;
@@ -70,7 +70,7 @@ type DownloadEvent = {
 let downloadHistory:DownloadEvent[] = [];
 
 try {
-   downloadHistory = JSON.parse(fs.readFileSync(path.join(__dirname, 'downloadHistory.json'), 'utf8'));
+   downloadHistory = JSON.parse(fs.readFileSync(path.join(executionPath, 'downloadHistory.json'), 'utf8'));
 } catch(err) {
   if (err.code === 'ENOENT') {
     console.log('downloadHistory.jsonを作成');
@@ -266,7 +266,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     const folderName:string = contractId + '_' + contractName;
     
     // ダウンロード先の設定
-    const downloadPath = path.join(__dirname, `data/${folderName}/`);
+    const downloadPath = path.join(executionPath, `data/${folderName}/`);
     await cdpSession.send("Browser.setDownloadBehavior", {
       behavior: "allow",
       downloadPath,
@@ -403,7 +403,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     ]);
   }
 
-  fs.writeFileSync(path.join(__dirname, 'downloadHistory.json'), JSON.stringify(downloadHistory, null, 2));
+  fs.writeFileSync(path.join(executionPath, 'downloadHistory.json'), JSON.stringify(downloadHistory, null, 2));
 };
 
 

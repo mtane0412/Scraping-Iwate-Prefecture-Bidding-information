@@ -1,10 +1,11 @@
 import * as log4js from 'log4js';
 import * as path from 'path';
+import { executionPath } from './config';
 /*
   log出力用
 */
 
-const logPath = path.join(__dirname, `logs/`);
+const logPath = path.join(executionPath, `logs/`);
 
 
 log4js.configure({

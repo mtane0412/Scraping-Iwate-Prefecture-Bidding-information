@@ -19,7 +19,7 @@ const launchOptions:LaunchOptions & BrowserLaunchArgumentOptions & BrowserConnec
 }
 
 // exeとnodeで実行パスを変える
-const executionPath = path.join(process.pkg ? path.dirname(process.execPath) : process.cwd());
+const executionPath = path.resolve(process.pkg ?  path.dirname(process.execPath) : __dirname);
 
 /*
   config
@@ -52,7 +52,7 @@ type Config = {
 
 let config:Config;
 try {
-  config = toml.parse(fs.readFileSync(path.join(__dirname, 'config.toml'), 'utf8'));
+  config = toml.parse(fs.readFileSync(path.join(executionPath, 'config.toml'), 'utf8'));
   
   // 設定を文字列で記述した場合にbool値に変換する
   if (typeof config.mail.sendEmailEnabled !== 'boolean') {
