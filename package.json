@@ -5,7 +5,8 @@
   "main": "dist/getPDFs.js",
   "bin": "dist/getPDFs.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc && pkg . -t node18-win-x64 -o dist/pdf-downloader/pdf-downloader.exe && cp config_example.toml dist/pdf-downloader/config.toml && cd dist/ && zip -r pdf-downloader.zip pdf-downloader/ && cd ../"
   },
   "keywords": [],
   "author": "",
