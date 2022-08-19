@@ -184,7 +184,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   }
   await frame.select('select[name="A300"]', numberOfItemsValue);
   console.log('案件表示件数:', config.numberOfItems);
-  console.log('案件ごとのダウンロードタイムアウト時間:', downloadBuffer, '秒');
+  console.log('案件ごとのダウンロードタイムアウト時間:', config.downloadBufferSec, '秒');
   console.log('各PDFクリックディレイ:', config.pdfClickDelaySec, '秒');
 
   // 発注情報検索: 業務名を入力して絞る
