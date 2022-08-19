@@ -186,6 +186,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   console.log('案件表示件数:', config.numberOfItems);
   console.log('案件ごとのダウンロードタイムアウト時間:', config.downloadTimeoutSec, '秒');
   console.log('各PDFクリックディレイ:', config.pdfClickDelaySec, '秒');
+  console.log('ファイルチェック:', config.fileCheckEnabled);
 
   // 発注情報検索: 業務名を入力して絞る
   await frame.type('[name="koujimei"]', projectTitle);
