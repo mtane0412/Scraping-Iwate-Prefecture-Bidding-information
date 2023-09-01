@@ -24,6 +24,7 @@ const checkFiles = async (downloadHistory: DownloadEvent[]) => {
   type failedDownload = {
     contractId: string;
     contractName: string;
+    sectionName: string; // 後付で追加された
     fileName: string;
   }
   const failedDownloads:failedDownload[] = [];
@@ -31,15 +32,26 @@ const checkFiles = async (downloadHistory: DownloadEvent[]) => {
   downloadHistory.forEach(contract=> {
     const contractId:string = contract.contractId;
     const contractName:string = contract.contractName;
-    const folderName:string = contractId + '_' + contractName;
-    const downloadPath:string = path.join(executionPath, `data/${folderName}/`);
+    const sectionName:string = contract.sectionName;
+    const dataPath:string = executionPath + '/data/';
+    //ファイルとディレクトリのリストが格納される(配列)
+    const files = fs.readdirSync(dataPath);
+    //console.log(files)
+    //ディレクトリのリストに絞る
+    const dirList = files.filter((file) => {
+      return fs.statSync(path.join(dataPath, file)).isDirectory()
+    })
+    //console.log(dirList);
+    const folderName = dirList.find(dirName => dirName.startsWith(contractId));
+    //console.log({folderName});
+    const downloadPath:string = path.join(dataPath, folderName);
     for (let i=0;i<contract.downloaded.length; i++) {
       const fileName = contract.downloaded[i];
-      const pdfPath = downloadPath + fileName;
+      const pdfPath = path.join(downloadPath, fileName);
       const pdfExists:boolean = fs.existsSync(pdfPath);
       if (!pdfExists) {
         console.log('not exist:' + pdfPath);
-        failedDownloads.push({contractId, contractName, fileName});
+        failedDownloads.push({contractId, contractName, sectionName, fileName});
         failedDownloadsText += `${contractName}(${contractId}) - ${fileName}\n`;
       }
     }
@@ -63,6 +75,7 @@ const checkFiles = async (downloadHistory: DownloadEvent[]) => {
 type DownloadEvent = {
   contractId: string;
   contractName: string;
+  sectionName?: string;
   downloaded: string[];
   notDownloaded: string[];
 };
@@ -208,6 +221,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     linkArg: string;
     releaseDate: string;
     isNew: boolean;
+    sectionName: string;
   }
 
   let downloadContracts:Contract[] = await frame2.evaluate(() => {
@@ -220,12 +234,14 @@ const getPDFs = async (browser:Browser): Promise<string> => {
       const contractId:string = tr.children[2].textContent.replace(/\s/g, '');
       const linkArg:string = tr.children[1].firstElementChild.getAttribute('href');
       const isNew:boolean = tr.children[0].firstElementChild && tr.children[0].firstElementChild.tagName === 'IMG'; // 公開日に画像(New)があるものはNew
+      const sectionName:string = tr.children[7].textContent.replace(/\s/g, '');
       const contract:Contract = {
         contractId,
         contractName,
         linkArg,
         releaseDate,
-        isNew
+        isNew,
+        sectionName
       }
       contracts.push(contract);
     }
@@ -266,7 +282,8 @@ const getPDFs = async (browser:Browser): Promise<string> => {
 
     const contractId = downloadContracts[i].contractId;
     const contractName = downloadContracts[i].contractName;
-    const folderName:string = contractId + '_' + contractName;
+    const sectionName = downloadContracts[i].sectionName;
+    const folderName:string = contractId + '_' + contractName + '_' + sectionName;
     
     // ダウンロード先の設定
     const downloadPath = path.join(executionPath, `data/${folderName}/`);
@@ -375,6 +392,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     downloadHistory.push({
       contractId,
       contractName,
+      sectionName,
       downloaded,
       notDownloaded
     });
