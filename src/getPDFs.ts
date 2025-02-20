@@ -239,6 +239,7 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     sectionName: string;
   }
 
+  // 検索結果が表示されるまで待つ(frame2のevaluate結果をwaitするのが難しい)
   await sleep(3000);
 
   let downloadContracts:Contract[] = await frame2.evaluate(() => {
