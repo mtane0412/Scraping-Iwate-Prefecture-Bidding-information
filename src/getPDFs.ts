@@ -5,6 +5,7 @@ import { launchOptions, executionPath, config } from './config';
 import {systemLogger, errorLogger} from './logger';
 import { sendGmail } from './mail';
 
+
 const topPage:string = config.topPage; // 岩手県入札情報公開トップページ
 const pdfKeywords:string[] = config.pdfKeywords; // このキーワードを含むPDFをダウンロードする
 const projectTitle:string = config.projectTitle; // この業務名を含むものに絞る
@@ -216,11 +217,19 @@ const getPDFs = async (browser:Browser): Promise<string> => {
 
   // 検索結果が表示されるまで待つ
   const searchResultSelector = 'table[width="800"][border="0"][cellpadding="1"][cellspacing="1"] tbody tr td[align="left"]';
-  await frame.waitForSelector(searchResultSelector);
+  await frame.waitForSelector(searchResultSelector, { visible: true });
   // 発注情報検索: 業務情報を取得
-  let elementHandle = await frame.$('#frmMain');
+  const frmMainSelector = '#frmMain';
+  await frame.waitForSelector(frmMainSelector, { visible: true });
+  let elementHandle = await frame.$(frmMainSelector);
+  if (!elementHandle) {
+    throw new Error("frmMainの要素が見つかりませんでした");
+  }
+  
   let frame2 = await elementHandle.contentFrame();
-
+  if (!frame2) {
+    throw new Error("iframeのコンテキストが取得できませんでした");
+  }
   type Contract = {
     contractId: string;
     contractName: string;
@@ -230,8 +239,11 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     sectionName: string;
   }
 
+  await sleep(3000);
+
   let downloadContracts:Contract[] = await frame2.evaluate(() => {
     const trs = document.querySelectorAll('tr');
+    console.log(trs);
     const contracts:Contract[] = [];
     for (let i=0; i < trs.length; i++) {
       const tr = trs[i];
@@ -459,7 +471,12 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     launchOptions.headless = config.debug.headless;
   }
   try {
-    if (fs.existsSync(path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'))) {
+    if (fs.existsSync(path.resolve('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'))) {
+      // Win x64フォルダにインストールされている場合
+      console.log('x64のChromeを使用');
+      launchOptions.executablePath = path.resolve('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe');
+      browser = await launch(launchOptions);
+    } else if (fs.existsSync(path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'))) {
       // Win x86フォルダにインストールされている場合
       console.log('x86のChromeを使用');
       launchOptions.executablePath = path.resolve('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe');

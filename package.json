@@ -1,5 +1,5 @@
 {
-  "name": "gcf-puppeteer",
+  "name": "pdf-downloader",
   "version": "1.0.0",
   "description": "",
   "main": "dist/getPDFs.js",
