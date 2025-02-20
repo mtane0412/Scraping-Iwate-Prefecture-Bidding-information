@@ -19,7 +19,7 @@ const launchOptions:LaunchOptions & BrowserLaunchArgumentOptions & BrowserConnec
 }
 
 // exeとnodeで実行パスを変える
-const executionPath = path.resolve(process.pkg ?  path.dirname(process.execPath) : __dirname);
+const executionPath = path.resolve((process as any).pkg ?  path.dirname(process.execPath) : __dirname);
 
 /*
   config

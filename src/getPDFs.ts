@@ -195,6 +195,9 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     default:
       numberOfItemsValue = '040';
   }
+  // select[name="A300"]が表示されるまで待つ
+  await frame.waitForSelector('select[name="A300"]');
+  // 表示件数を変更
   await frame.select('select[name="A300"]', numberOfItemsValue);
   console.log('案件表示件数:', config.numberOfItems);
   console.log('案件ごとのダウンロードタイムアウト時間:', config.downloadTimeoutSec, '秒');
@@ -211,6 +214,9 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   ]);
 
 
+  // 検索結果が表示されるまで待つ
+  const searchResultSelector = 'table[width="800"][border="0"][cellpadding="1"][cellspacing="1"] tbody tr td[align="left"]';
+  await frame.waitForSelector(searchResultSelector);
   // 発注情報検索: 業務情報を取得
   let elementHandle = await frame.$('#frmMain');
   let frame2 = await elementHandle.contentFrame();
@@ -273,8 +279,22 @@ const getPDFs = async (browser:Browser): Promise<string> => {
   for (let i=0; i<downloadContracts.length; i++) {
     // 業務名クリック → 発注情報閲覧へ移動
     console.log('project: ' + downloadContracts[i].contractName);
-    elementHandle = await frame.$('#frmMain');
-    frame2 = await elementHandle.contentFrame();
+    
+    // 毎回 frame を再取得する
+    let frame = page.frames().find(f => f.name() === 'frmRIGHT');
+    if (!frame) {
+      throw new Error('frmRIGHT フレームが見つかりませんでした');
+    }
+
+    // フレームの再取得後に要素を探す
+    let elementHandle = await frame.waitForSelector('#frmMain');
+    let frame2 = await elementHandle.contentFrame();
+    if (!frame2) {
+      throw new Error('frmMain のフレームが取得できませんでした');
+    }
+
+    // a[href="${downloadContracts[i].linkArg}"]が表示されるまで待つ
+    await frame2.waitForSelector(`a[href="${downloadContracts[i].linkArg}"]`);
     await Promise.all([
       frame.waitForNavigation(),
       frame2.click(`a[href="${downloadContracts[i].linkArg}"]`)
@@ -419,6 +439,8 @@ const getPDFs = async (browser:Browser): Promise<string> => {
     cdpSession.removeAllListeners("Browser.downloadProgress");
     clearTimeout(downloadFailedTimer);
     // 戻るをクリック → 発注情報検索画面に戻る
+    // input[value="戻る"]が表示されるまで待つ
+    await frame.waitForSelector('input[value="戻る"]');
     await Promise.all([
       frame.waitForNavigation(),
       frame.click('input[value="戻る"]')
