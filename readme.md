@@ -1,6 +1,10 @@
 # PDF-downloader
 [岩手県入札情報公開サービス](https://www.pref.iwate.jp/kensei/nyuusatsu/kouji/1017384.html)から特定のPDFをダウンロードするスクリプト
 
+> [!CAUTION]
+> This repository has been moved to: https://github.com/kasseika/bid-info-downloader
+
+
 # 機能
 - 実行すると、インストールされたGoogle Chromeを自動操作してコンサルの案件から指定業務名の最新の100件を取得し、最新の案件のPDFをダウンロードする
 - 設定ファイル(config.toml)を記述することでダウンロードの条件設定
